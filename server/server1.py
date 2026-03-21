@@ -1,76 +1,41 @@
-# receiver.py
 import socket
-import wave
-import json
-from vosk import Model, KaldiRecognizer, SetLogLevel
+import os
+import struct
 
 HOST = "0.0.0.0"
-PORT = 5000
-MODEL_PATH = "vosk-model-small-ru-0.22"  # папка модели
+PORT = 5001
+BUFFER = 4096
 
-def transcribe(path):
-    SetLogLevel(0)
-    wf = wave.open(path, "rb")
+# Папка "Recordings" рядом со скриптом
+save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Recordings")
+os.makedirs(save_dir, exist_ok=True)
 
-    if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
-        raise ValueError("Нужен WAV: mono, 16-bit PCM")
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind((HOST, PORT))
+server.listen(1)
+print(f"Listening on port {PORT}...")
 
-    model = Model(model_path=MODEL_PATH)
-    rec = KaldiRecognizer(model, wf.getframerate())
-    rec.SetWords(True)
+conn, addr = server.accept()
+print(f"Connected from {addr}")
 
-    parts = []
-    while True:
-        data = wf.readframes(4000)
-        if len(data) == 0:
+# Получаем длину имени файла, затем имя
+name_len = struct.unpack("I", conn.recv(4))[0]
+filename = conn.recv(name_len).decode()
+
+# Получаем размер файла
+file_size = struct.unpack("Q", conn.recv(8))[0]
+
+save_path = os.path.join(save_dir, filename)
+received = 0
+
+with open(save_path, "wb") as f:
+    while received < file_size:
+        data = conn.recv(min(BUFFER, file_size - received))
+        if not data:
             break
-        if rec.AcceptWaveform(data):
-            res = json.loads(rec.Result())
-            parts.append(res.get("text", ""))
+        f.write(data)
+        received += len(data)
 
-    final = json.loads(rec.FinalResult())
-    parts.append(final.get("text", ""))
-
-    return " ".join(p for p in parts if p)
-
-def main():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, PORT))
-        s.listen(1)
-        print(f"Listening on {HOST}:{PORT} ...")
-
-        conn, addr = s.accept()
-        with conn:
-            print("Connected from", addr)
-
-            header = b""
-            while not header.endswith(b"\n"):
-                data = conn.recv(1)
-                if not data:
-                    break
-                header += data
-
-            header = header.decode("utf-8").strip()
-            filename, filesize = header.split("|")
-            filesize = int(filesize)
-            print(f"Receiving {filename} ({filesize} bytes)")
-
-            received = 0
-            with open(filename, "wb") as f:
-                while received < filesize:
-                    chunk = conn.recv(4096)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    received += len(chunk)
-
-            print("File received, start transcription...")
-            try:
-                text = transcribe(filename)
-                print("Result text:")
-                print(text)
-            except Exception as e:
-                print("Transcription error:", e)
-
-if __name__ == "__main__":
-    main()
+print(f"Saved: {save_path} ({received} bytes)")
+conn.close()
+server.close()

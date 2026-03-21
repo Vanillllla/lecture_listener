@@ -1,26 +1,34 @@
-# sender.py
 import socket
 import os
+import struct
 
-HOST = "192.168.0.10"   # IP получателя
-PORT = 5000
-FILENAME = "audio.wav"  # локальный файл для отправки
+SERVER_IP = input("Enter receiver IP: ")  # например: 192.168.1.106
+PORT = 5001
+BUFFER = 4096
 
-def main():
-    filesize = os.path.getsize(FILENAME)
+filepath = input("Enter audio file path: ")  # например: music.mp3
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((HOST, PORT))
+filename = os.path.basename(filepath)
+file_size = os.path.getsize(filepath)
 
-        header = f"{os.path.basename(FILENAME)}|{filesize}\n"
-        s.sendall(header.encode("utf-8"))
+client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client.connect((SERVER_IP, PORT))
 
-        with open(FILENAME, "rb") as f:
-            while True:
-                chunk = f.read(4096)
-                if not chunk:
-                    break
-                s.sendall(chunk)
+# Отправляем длину имени файла + имя
+name_encoded = filename.encode()
+client.send(struct.pack("I", len(name_encoded)))
+client.send(name_encoded)
 
-if __name__ == "__main__":
-    main()
+# Отправляем размер файла
+client.send(struct.pack("Q", file_size))
+
+# Отправляем содержимое файла
+sent = 0
+with open(filepath, "rb") as f:
+    while chunk := f.read(BUFFER):
+        client.sendall(chunk)
+        sent += len(chunk)
+        print(f"Sent: {sent}/{file_size} bytes", end="\r")
+
+print(f"\nDone! Sent {filename}")
+client.close()
