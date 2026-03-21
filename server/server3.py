@@ -2,6 +2,7 @@ import socket
 import os
 import struct
 import whisper as wh
+from datetime import datetime  # NEW
 
 HOST = "0.0.0.0"
 PORT = 5001
@@ -12,20 +13,22 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SAVE_DIR = os.path.join(BASE_DIR, "Recordings")
 os.makedirs(SAVE_DIR, exist_ok=True)
 
+# Папка для сохранения транскрипций
+TRANS_DIR = os.path.join(BASE_DIR, "transcriptions")
+os.makedirs(TRANS_DIR, exist_ok=True)
+
 # Загружаем модель Whisper один раз
-model = wh.load_model("large")  # или "base", "medium", etc.
+model = wh.load_model("large-v3-turbo")  # или "base", "medium", etc.
+
 
 def receive_file(conn):
-    # 1) длина имени файла (4 байта, unsigned int)
     raw = conn.recv(4)
     if len(raw) < 4:
         raise ConnectionError("Failed to read filename length")
     name_len = struct.unpack("I", raw)[0]
 
-    # 2) имя файла
     filename = conn.recv(name_len).decode("utf-8")
 
-    # 3) размер файла (8 байт, unsigned long long)
     raw = conn.recv(8)
     if len(raw) < 8:
         raise ConnectionError("Failed to read file size")
@@ -45,15 +48,27 @@ def receive_file(conn):
     print(f"Saved: {save_path} ({received} bytes)")
     return save_path
 
+
 def transcribe_file(path: str) -> str:
-    # language="ru" для русского
-    result = model.transcribe(path, language="ru")
+    result = model.transcribe(path, language="ru", fp16=False)
     return result.get("text", "").strip()
+
+
+def save_transcription(text: str):
+    # Имя файла вида transcription_2026-03-21_16-40-00.txt
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"transcription_{ts}.txt"
+    full_path = os.path.join(TRANS_DIR, filename)
+    with open(full_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"Transcription saved: {full_path}")
+
 
 def send_text(conn, text: str):
     data = text.encode("utf-8")
     conn.sendall(struct.pack("I", len(data)))
     conn.sendall(data)
+
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -67,6 +82,7 @@ def main():
         try:
             audio_path = receive_file(conn)
             text = transcribe_file(audio_path)
+            save_transcription(text)  # NEW
             send_text(conn, text)
         except Exception as e:
             print("Error:", e)
@@ -76,6 +92,7 @@ def main():
                 pass
         finally:
             conn.close()
+
 
 if __name__ == "__main__":
     main()
