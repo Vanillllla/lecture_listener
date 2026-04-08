@@ -2,11 +2,11 @@ import socket
 import os
 import struct
 
-SERVER_IP = input("Enter receiver IP: ")  # например: 192.168.1.106
+SERVER_IP = "192.168.1.106"
 PORT = 5001
 BUFFER = 4096
 
-filepath = input("Enter audio file path: ")  # например: music.mp3
+filepath = r"111.aac"
 
 filename = os.path.basename(filepath)
 file_size = os.path.getsize(filepath)
@@ -31,4 +31,10 @@ with open(filepath, "rb") as f:
         print(f"Sent: {sent}/{file_size} bytes", end="\r")
 
 print(f"\nDone! Sent {filename}")
+
+raw = client.recv(4)
+text_len = struct.unpack("I", raw)[0]
+text = client.recv(text_len).decode("utf-8")
+print("Transcription:", text)
+
 client.close()
