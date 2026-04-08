@@ -2,7 +2,7 @@ import os
 from g4f.client import Client  # pip install g4f
 
 INPUT_FILE = "transcriptions/transcription_2026-03-21_16-52-45.txt"
-OUTPUT_FILE = "output.txt "   # можешь поменять на .txt
+OUTPUT_FILE = "output.txt"   # можешь поменять на .txt
 
 SYSTEM_PROMPT = """
 Ты — опытный преподаватель технического университета и профессиональный верстальщик LaTeX.
